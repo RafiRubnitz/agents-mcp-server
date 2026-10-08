@@ -31,9 +31,14 @@ logger.configure(patcher=_render_params)
 
 
 def get_logs_dir() -> Path:
-    """The logs folder: the INBOX_LOGS environment variable, else the project's logs/."""
+    """The logs folder: the INBOX_LOGS environment variable, else the checkout's logs/,
+    else (installed as a plugin or a package) ~/.claude/inbox/logs."""
     env = os.environ.get(consts.ENV_LOGS)
-    return Path(env) if env else consts.LOGS_DIR
+    if env:
+        return Path(env)
+    if (consts.REPO_DIR / consts.REPO_MARKER).exists():
+        return consts.LOGS_DIR
+    return consts.INSTALLED_LOGS_DIR
 
 
 def _only(component: str):

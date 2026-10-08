@@ -9,7 +9,33 @@ One HTTP server on `127.0.0.1:8765` serves the MCP tools (`/mcp`), the hook rout
 UI (`/`). State lives in memory and is written through to SQLite
 (`~/.claude/inbox/inbox.db`), so a restart loses nothing.
 
-## Install
+## Install as a Claude Code plugin
+
+This repo is a Claude Code plugin. It needs [uv](https://docs.astral.sh/uv/) on your PATH.
+In a Claude Code session:
+
+```
+/plugin install inbox --marketplace RafiRubnitz/agents-mcp-server
+```
+
+On Claude Code older than 2.1.275, in two steps:
+
+```
+/plugin marketplace add RafiRubnitz/agents-mcp-server
+/plugin install inbox@agents-mcp-server
+```
+
+The plugin adds the inbox MCP tools and the SessionStart and Stop hooks. It does not start
+the server. Start it yourself, without cloning anything:
+
+```
+uvx --from git+https://github.com/RafiRubnitz/agents-mcp-server inbox-mcp
+```
+
+Then restart your Claude Code sessions. Use the plugin or the manual install below, not
+both: with both, every hook runs twice.
+
+## Install from a clone
 
 ```
 uv sync
@@ -96,7 +122,8 @@ A session picks up hooks when it starts, so sessions that were already open befo
 
 ## Logs
 
-Everything is logged to the `logs/` folder of this repo, one file per component per day:
+Everything is logged to the `logs/` folder of this repo (to `~/.claude/inbox/logs` when it
+runs as a plugin or from `uvx`), one file per component per day:
 
 ```
 logs/server_2026-10-08.log    tool calls, inbox reports to hooks, purge runs, startup

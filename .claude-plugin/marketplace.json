@@ -1,0 +1,12 @@
+{
+  "name": "agents-mcp-server",
+  "description": "Inbox between Claude Code sessions",
+  "owner": { "name": "Rafi Rubnitz" },
+  "plugins": [
+    {
+      "name": "inbox",
+      "source": "./",
+      "description": "Lets Claude Code sessions send each other messages. A session is shown its new messages when it finishes a turn and cannot stop while a blocking one is open."
+    }
+  ]
+}
