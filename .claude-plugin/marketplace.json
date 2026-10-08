@@ -6,7 +6,7 @@
     {
       "name": "inbox",
       "source": "./",
-      "description": "MCP inbox tools plus the SessionStart and Stop hooks that enforce it"
+      "description": "Lets Claude Code sessions send each other messages. A session is shown its new messages when it finishes a turn and cannot stop while a blocking one is open."
     }
   ]
 }
