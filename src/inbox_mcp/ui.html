@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inbox</title>
+<style>
+  :root {
+    --brand: #0F6CBD;
+    --brand-ink: #FFFFFF;
+    --page: #F5F5F5;
+    --pane: #FFFFFF;
+    --rail: #F0F0F0;
+    --ink: #242424;
+    --quiet: #616161;
+    --line: #E0E0E0;
+    --hover: #F5F5F5;
+    --picked: #EBF3FC;
+    --picked-edge: #0F6CBD;
+    --blocking: #C50F1F;
+    --important: #BC4B09;
+    --normal: #616161;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --brand: #0F548C;
+      --page: #141414;
+      --pane: #1F1F1F;
+      --rail: #292929;
+      --ink: #F5F5F5;
+      --quiet: #ADADAD;
+      --line: #3D3D3D;
+      --hover: #2E2E2E;
+      --picked: #0C3B5E;
+      --picked-edge: #479EF5;
+      --blocking: #F1707B;
+      --important: #F7894A;
+      --normal: #ADADAD;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    background: var(--page);
+    color: var(--ink);
+    font: 400 14px/1.45 "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  }
+  :focus-visible { outline: 2px solid var(--picked-edge); outline-offset: -2px; }
+  button { font: inherit; color: inherit; }
+
+  .top {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    height: 48px;
+    padding: 0 16px;
+    background: var(--brand);
+    color: var(--brand-ink);
+  }
+  .top h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  .top .status { margin-inline-start: auto; opacity: 0.9; }
+  .top .status.down { opacity: 1; font-weight: 600; }
+
+  /* Reading pane, message list, then the sessions on the right. */
+  .panes {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px 250px;
+    min-height: 0;
+  }
+  .panes > * { min-height: 0; overflow-y: auto; }
+
+  .sessions { background: var(--rail); border-inline-start: 1px solid var(--line); padding: 8px; }
+  .sessions h2, .list h2 {
+    margin: 0;
+    padding: 8px 8px 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--quiet);
+  }
+  .sessions ul, .list ul { list-style: none; margin: 0; padding: 0; }
+  .sessions button {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0 8px;
+    align-items: baseline;
+    width: 100%;
+    padding: 7px 8px;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    text-align: start;
+    cursor: pointer;
+  }
+  .sessions button:hover { background: var(--hover); }
+  .sessions button[aria-current="true"] { background: var(--picked); font-weight: 600; }
+  .sessions .name, .sessions .about { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sessions .count { color: var(--brand); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .sessions .count.blocking { color: var(--blocking); }
+  .sessions .about { grid-column: 1 / -1; color: var(--quiet); font-size: 12px; font-weight: 400; }
+  @media (prefers-color-scheme: dark) { .sessions .count { color: var(--picked-edge); } }
+
+  .list { background: var(--pane); border-inline-start: 1px solid var(--line); }
+  .list h2 { position: sticky; top: 0; padding: 10px 16px 6px; background: var(--pane); }
+  .list .none { margin: 0; padding: 4px 16px 12px; color: var(--quiet); }
+  .row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0 8px;
+    width: 100%;
+    padding: 9px 16px 10px 13px;
+    border: 0;
+    border-inline-start: 3px solid transparent;
+    border-bottom: 1px solid var(--line);
+    background: none;
+    text-align: start;
+    cursor: pointer;
+  }
+  .row:hover { background: var(--hover); }
+  .row[aria-current="true"] { background: var(--picked); border-inline-start-color: var(--picked-edge); }
+  .row .from { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .when { color: var(--quiet); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .row .sev { grid-column: 1 / -1; font-size: 12px; font-weight: 600; color: var(--normal); }
+  .row.important .sev { color: var(--important); }
+  .row.blocking .sev { color: var(--blocking); }
+  .row .preview {
+    grid-column: 1 / -1;
+    color: var(--quiet);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .row.deleted .from { font-weight: 400; }
+  .row.deleted .from, .row.deleted .sev { color: var(--quiet); }
+  .row.deleted .preview { text-decoration: line-through; }
+
+  .reading { background: var(--pane); padding: 24px 28px 40px; }
+  .reading .head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; }
+  .reading .avatar {
+    grid-row: span 2;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--brand);
+    color: var(--brand-ink);
+    font-weight: 600;
+  }
+  .reading .from { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+  .reading .when { color: var(--quiet); font-size: 12px; }
+  .reading .to { grid-column: 2 / -1; color: var(--quiet); }
+  .reading .tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; }
+  .reading .tag {
+    padding: 1px 8px 2px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    color: var(--quiet);
+    font-size: 12px;
+  }
+  .reading .tag.sev { font-weight: 600; color: var(--normal); border-color: currentColor; }
+  .reading .tag.sev.important { color: var(--important); }
+  .reading .tag.sev.blocking { color: var(--blocking); }
+  .reading .body {
+    margin: 20px 0 0;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    max-width: 75ch;
+    font-size: 15px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .blank { max-width: 46ch; }
+  .blank h2 { margin: 0 0 6px; font-size: 18px; font-weight: 600; }
+  .blank p { margin: 0; color: var(--quiet); }
+
+  @media (max-width: 900px) {
+    body { display: block; }
+    .panes { display: flex; flex-direction: column; }
+    .panes > * { overflow-y: visible; }
+    .sessions { order: 1; border: 0; border-bottom: 1px solid var(--line); }
+    .sessions h2 { display: none; }
+    .sessions ul { display: flex; gap: 4px; overflow-x: auto; }
+    .sessions button { width: max-content; max-width: 70vw; }
+    .sessions .about { display: none; }
+    .list { order: 2; border: 0; border-bottom: 1px solid var(--line); }
+    .reading { order: 3; padding: 20px 16px 32px; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Inbox</h1>
+  <span class="status" id="status" role="status">Connecting</span>
+</header>
+<div class="panes">
+  <main class="reading" id="reading"></main>
+  <section class="list" id="list" aria-label="Messages"></section>
+  <nav class="sessions" aria-label="Sessions">
+    <h2>Sessions</h2>
+    <ul id="sessions"></ul>
+  </nav>
+</div>
+
+<script>
+const readingEl = document.getElementById("reading");
+const listEl = document.getElementById("list");
+const sessionsEl = document.getElementById("sessions");
+const statusEl = document.getElementById("status");
+const SESSION_KEY = "inbox.session";
+const SEVERITY = { blocking: "Blocking", important: "Important", normal: "Normal" };
+const pickedMessage = {};  // session_id -> message id
+let last = "";
+let state = { sessions: [] };
+let down = false;
+let pickedSession = null;
+try { pickedSession = localStorage.getItem(SESSION_KEY); } catch (err) {}
+
+function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function when(seconds, long) {
+  const d = new Date(seconds * 1000);
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (long) return d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short", year: "numeric" }) + " " + time;
+  const today = d.toDateString() === new Date().toDateString();
+  return today ? time : d.toLocaleDateString([], { day: "numeric", month: "short" });
+}
+
+function currentSession() {
+  return state.sessions.find(s => s.session_id === pickedSession) || state.sessions[0] || null;
+}
+
+function currentMessage(session) {
+  const wanted = pickedMessage[session.session_id];
+  return session.messages.find(m => m.id === wanted)
+    || session.messages.find(m => !m.deleted)
+    || session.messages[0]
+    || null;
+}
+
+function blank(title, text) {
+  const box = el("div", "blank");
+  box.append(el("h2", "", title), el("p", "", text));
+  return box;
+}
+
+function renderSessions(session) {
+  sessionsEl.replaceChildren();
+  state.sessions.forEach(s => {
+    const open = s.messages.filter(m => !m.deleted);
+    const button = el("button");
+    button.type = "button";
+    if (session && s.session_id === session.session_id) button.setAttribute("aria-current", "true");
+    button.append(el("span", "name", s.name));
+    if (open.length) {
+      const blocking = open.some(m => m.severity === "blocking");
+      const count = el("span", "count" + (blocking ? " blocking" : ""), String(open.length));
+      count.title = open.length + " open" + (blocking ? ", blocking included" : "");
+      button.append(count);
+    }
+    if (s.description) {
+      const about = el("span", "about", s.description);
+      about.dir = "auto";
+      button.append(about);
+    }
+    button.addEventListener("click", () => {
+      pickedSession = s.session_id;
+      try { localStorage.setItem(SESSION_KEY, s.session_id); } catch (err) {}
+      listEl.scrollTop = 0;
+      readingEl.scrollTop = 0;
+      render();
+    });
+    const li = el("li");
+    li.append(button);
+    sessionsEl.append(li);
+  });
+}
+
+function row(session, msg, picked) {
+  const button = el("button", "row " + msg.severity + (msg.deleted ? " deleted" : ""));
+  button.type = "button";
+  if (picked && picked.id === msg.id) button.setAttribute("aria-current", "true");
+  const preview = el("span", "preview", msg.body.trim().split(/\n/)[0]);
+  preview.dir = "auto";
+  button.append(
+    el("span", "from", msg.from),
+    el("time", "when", when(msg.created_at)),
+    el("span", "sev", SEVERITY[msg.severity]),
+    preview,
+  );
+  button.addEventListener("click", () => {
+    pickedMessage[session.session_id] = msg.id;
+    readingEl.scrollTop = 0;
+    render();
+  });
+  const li = el("li");
+  li.append(button);
+  return li;
+}
+
+function group(session, title, messages, picked, emptyText) {
+  const parts = [el("h2", "", title + " (" + messages.length + ")")];
+  if (!messages.length) {
+    parts.push(el("p", "none", emptyText));
+  } else {
+    const ul = el("ul");
+    messages.forEach(m => ul.append(row(session, m, picked)));
+    parts.push(ul);
+  }
+  return parts;
+}
+
+function renderList(session, picked) {
+  const scroll = listEl.scrollTop;
+  listEl.replaceChildren();
+  if (!session) return;
+  listEl.append(
+    ...group(session, "Open", session.messages.filter(m => !m.deleted), picked, "Nothing waiting."),
+    ...group(session, "Deleted", session.messages.filter(m => m.deleted), picked, "Nothing deleted yet."),
+  );
+  listEl.scrollTop = scroll;
+}
+
+function renderReading(session, msg) {
+  const scroll = readingEl.scrollTop;
+  readingEl.replaceChildren();
+  if (down) {
+    readingEl.append(blank("Inbox server is not answering", "Start it with: uv run inbox-mcp"));
+    return;
+  }
+  if (!session) {
+    readingEl.append(blank("No sessions yet", "A session shows up here once it registers with the inbox. Ask a Claude session to register, then send it a message from another one."));
+    return;
+  }
+  if (!msg) {
+    readingEl.append(blank("No messages for " + session.name, "Messages sent to this session show up here."));
+    return;
+  }
+  const head = el("div", "head");
+  head.append(
+    el("span", "avatar", msg.from.trim().charAt(0).toUpperCase()),
+    el("span", "from", msg.from),
+    el("time", "when", when(msg.created_at, true)),
+    el("span", "to", "To " + session.name),
+  );
+  const tags = el("div", "tags");
+  tags.append(
+    el("span", "tag sev " + msg.severity, SEVERITY[msg.severity]),
+    el("span", "tag", msg.deleted ? "Deleted" : "Open"),
+    el("span", "tag", "Message " + msg.id),
+    el("span", "tag", "Thread " + msg.thread_id),
+  );
+  const body = el("p", "body", msg.body);
+  body.dir = "auto";
+  readingEl.append(head, tags, body);
+  readingEl.scrollTop = scroll;
+}
+
+function render() {
+  const session = currentSession();
+  const msg = session ? currentMessage(session) : null;
+  renderSessions(session);
+  renderList(session, msg);
+  renderReading(session, msg);
+}
+
+async function refresh() {
+  try {
+    const text = await (await fetch("/api/state", { cache: "no-store" })).text();
+    statusEl.className = "status";
+    statusEl.textContent = "Updated " + new Date().toLocaleTimeString();
+    if (text !== last || down) {
+      last = text;
+      down = false;
+      state = JSON.parse(text);
+      render();
+    }
+  } catch (err) {
+    statusEl.className = "status down";
+    statusEl.textContent = "Server is not answering";
+    if (!down) {
+      down = true;
+      render();
+    }
+  }
+}
+
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>
