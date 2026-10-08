@@ -40,7 +40,9 @@ Rules this project follows. Add a rule here when a review settles one.
   component constant: `log = get_logger(consts.LOG_STORE)`. A component logs what it does
   itself; it does not log on behalf of another component.
 - All logs go to the `logs/` folder, one file per component per day:
-  `logs/<component>_<YYYY-MM-DD>.log`. A new file starts at midnight.
+  `logs/<component>_<YYYY-MM-DD>.log`. A new file starts at midnight. A copy that is not a
+  git checkout (the plugin, a `uvx` run) has no lasting folder of its own and uses
+  `~/.claude/inbox/logs` instead.
 - Every log carries meaningful parameters, mostly runtime values: ids, names, counts,
   paths, durations, outcomes. Pass them as keyword arguments, never formatted into the text:
   `log.info("message sent", message_id=msg.id, to_name=to, severity=severity)`. The text

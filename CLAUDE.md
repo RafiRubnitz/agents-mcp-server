@@ -30,6 +30,9 @@ src/inbox_mcp/
   install.py    writes the hooks into a Claude Code settings.json
   ui.html       the web UI, served at /
   migrations/   alembic environment and versions
+.claude-plugin/ plugin.json and marketplace.json: this repo is a Claude Code plugin
+.mcp.json       the plugin's MCP server entry (the server's http address)
+hooks/          hooks.json (the plugin's hooks) and run_hook.py (starts hook.py from src/)
 tests/
 docs/conventions.md
 logs/           <component>_<date>.log, not committed
@@ -64,6 +67,12 @@ logs/           <component>_<date>.log, not committed
 - When something misbehaves, read `logs/` first: `server`, `store`, `db`, `hook` and
   `install` each have a file per day. The hook manager must never write to stdout or stderr
   except what the hook protocol needs, so its diagnostics exist only there.
+- There are two ways the hooks get installed: `install.py` writes them into settings.json,
+  and the plugin declares them in `hooks/hooks.json`. Keep both on the same events
+  (`consts.INSTALL_EVENTS`); `tests/test_plugin.py` checks it. The server address is also
+  written in `.mcp.json`. Run `claude plugin validate .` after touching plugin files.
+- The plugin runs the hook manager with `uv run --no-project --with loguru`, not from a
+  venv, so `hook.py` may only need loguru beyond the standard library.
 - A running server does not reload code. Restart it after changing anything it imports.
 - The real database is `~/.claude/inbox/inbox.db` and other sessions may be using it. Use
   `INBOX_DB` and `INBOX_PORT` for manual experiments.

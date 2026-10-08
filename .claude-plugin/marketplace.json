@@ -1,0 +1,12 @@
+{
+  "name": "agents-mcp-server",
+  "description": "Inbox between Claude Code sessions",
+  "owner": { "name": "Rafi Rubnitz" },
+  "plugins": [
+    {
+      "name": "inbox",
+      "source": "./",
+      "description": "MCP inbox tools plus the SessionStart and Stop hooks that enforce it"
+    }
+  ]
+}

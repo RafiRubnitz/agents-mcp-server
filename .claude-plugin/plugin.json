@@ -1,0 +1,8 @@
+{
+  "name": "inbox",
+  "displayName": "Inbox",
+  "description": "An inbox between Claude Code sessions: sessions register under a name and send each other messages; a Stop hook shows new messages and holds a session while a blocking one is open.",
+  "author": { "name": "Rafi Rubnitz" },
+  "repository": "https://github.com/RafiRubnitz/agents-mcp-server",
+  "keywords": ["mcp", "inbox", "sessions", "messaging", "hooks"]
+}

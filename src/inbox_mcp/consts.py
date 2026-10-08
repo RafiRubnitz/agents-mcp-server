@@ -59,7 +59,12 @@ INSTALL_EVENTS = {
 SETTINGS_BACKUP_SUFFIX = ".inbox-backup"
 
 # --- logs: one file per component per day ---
-LOGS_DIR = Path(__file__).resolve().parents[2] / "logs"
+REPO_DIR = Path(__file__).resolve().parents[2]
+# A git checkout logs into its own logs/ folder; an installed copy (plugin, uv tool) has no
+# lasting folder of its own and logs next to the database.
+REPO_MARKER = ".git"
+LOGS_DIR = REPO_DIR / "logs"
+INSTALLED_LOGS_DIR = Path.home() / ".claude" / "inbox" / "logs"
 LOG_SERVER = "server"
 LOG_STORE = "store"
 LOG_DB = "db"
