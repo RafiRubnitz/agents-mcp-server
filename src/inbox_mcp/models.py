@@ -25,6 +25,10 @@ class Transcript(Base):
 
     session_id: Mapped[str] = mapped_column(primary_key=True)
     path: Mapped[str]
+    # The computer the session runs on; None for rows older than this column.
+    host: Mapped[str | None] = mapped_column(default=None)
+    # When a hook of the session last called, as a timestamp.
+    last_seen: Mapped[float] = mapped_column(default=0.0, server_default="0")
 
 
 class Message(Base):

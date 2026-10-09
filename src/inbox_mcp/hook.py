@@ -13,6 +13,7 @@ blocks Claude.
 
 import json
 import os
+import socket
 import sys
 import urllib.error
 import urllib.request
@@ -30,10 +31,23 @@ def get_base_url() -> str:
     return os.environ.get(consts.ENV_URL, consts.BASE_URL)
 
 
+def get_token() -> str | None:
+    return os.environ.get(consts.ENV_TOKEN) or None
+
+
+def request_headers() -> dict:
+    headers = {
+        "Content-Type": "application/json",
+        consts.HEADER_CLIENT_HOST: socket.gethostname(),
+    }
+    token = get_token()
+    if token:
+        headers[consts.HEADER_AUTHORIZATION] = consts.TOKEN_SCHEME + token
+    return headers
+
+
 def post(path: str, body: bytes) -> dict:
-    req = urllib.request.Request(
-        get_base_url() + path, data=body, headers={"Content-Type": "application/json"}
-    )
+    req = urllib.request.Request(get_base_url() + path, data=body, headers=request_headers())
     with _opener.open(req, timeout=consts.HOOK_REQUEST_TIMEOUT_SECONDS) as resp:
         return json.loads(resp.read())
 
@@ -154,6 +168,17 @@ def main() -> int:
 
     try:
         result = handler(payload)
+    except urllib.error.HTTPError as error:
+        # The server answered and said no: a missing or wrong token, most likely.
+        log.warning(
+            "server refused",
+            event=event,
+            session_id=session_id,
+            url=get_base_url(),
+            status=error.code,
+            token_sent=get_token() is not None,
+        )
+        result = {"outcome": "server refused"}
     except (urllib.error.URLError, OSError) as error:
         log.warning(
             "server unreachable",

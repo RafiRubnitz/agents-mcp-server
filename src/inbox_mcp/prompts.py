@@ -35,6 +35,7 @@ TOOL_READ_THREAD = "Read a whole conversation you take part in, oldest message f
 REGISTERED = "Registered as '{name}'."
 NO_SESSIONS = "No sessions registered."
 SESSION_LINE = "{name}: {description}"
+SESSION_LINE_WITH_HOST = "{name} (on {host}): {description}"
 SENT = "Sent message #{id} to '{to}' (thread {thread_id})."
 COUNT = "{total} open message(s): {detail}."
 COUNT_PART = "{count} {severity}"
@@ -75,4 +76,8 @@ ERROR_UNKNOWN_RECIPIENT = (
 ERROR_REPLY_TARGET = "cannot reply to message {id}: not found"
 ERROR_MESSAGE_NOT_FOUND = "no message {id} in your inbox"
 ERROR_ALREADY_DELETED = "message {id} is already deleted"
+ERROR_NETWORK_WITHOUT_TOKEN = (
+    "refusing to listen on {host}: the server only opens to the network with a token."
+    " Set INBOX_TOKEN to a secret and give the same value to every computer that uses it."
+)
 ERROR_THREAD_NOT_FOUND = "no thread {id} that you take part in"

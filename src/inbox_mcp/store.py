@@ -1,6 +1,7 @@
 """Inbox state: held in memory, every mutation written through to SQLite."""
 
 import os
+import socket
 import threading
 import time
 from collections.abc import Iterable
@@ -40,7 +41,9 @@ class Store:
         self._lock = threading.RLock()
         self.sessions: dict[str, AgentSession] = {}
         self.names: dict[str, str] = {}
-        self.transcripts: dict[str, str] = {}
+        self.transcripts: dict[str, Transcript] = {}
+        # This computer's name: sessions that report another one are remote.
+        self.host = socket.gethostname()
         self.messages: dict[int, Message] = {}
         self._next_id = 1
         self._load()
@@ -51,7 +54,7 @@ class Store:
                 self.sessions[session.session_id] = session
                 self.names[session.name] = session.session_id
             for transcript in db.scalars(select(Transcript)):
-                self.transcripts[transcript.session_id] = transcript.path
+                self.transcripts[transcript.session_id] = transcript
             for message in db.scalars(select(Message)):
                 self.messages[message.id] = message
         self._next_id = max(self.messages, default=0) + 1
@@ -99,13 +102,30 @@ class Store:
             )
             return session
 
-    def set_transcript(self, session_id: str, path: str) -> None:
+    def set_transcript(self, session_id: str, path: str, host: str | None = None) -> None:
+        """Record where the session's transcript lives and that the session just called."""
+        now = time.time()
         with self._lock:
-            if self.transcripts.get(session_id) == path:
+            old = self.transcripts.get(session_id)
+            moved = old is None or old.path != path or old.host != host
+            if not moved and now - old.last_seen < consts.LAST_SEEN_WRITE_INTERVAL_SECONDS:
                 return
-            self.transcripts[session_id] = path
-            self._save(Transcript(session_id=session_id, path=path))
-            log.info("transcript recorded", session_id=session_id, path=path)
+            row = Transcript(session_id=session_id, path=path, host=host, last_seen=now)
+            self.transcripts[session_id] = row
+            self._save(row)
+            if moved:
+                log.info("transcript recorded", session_id=session_id, path=path, host=host)
+
+    def host_of(self, session_id: str) -> str:
+        """The computer a session runs on; this one when it never said otherwise."""
+        transcript = self.transcripts.get(session_id)
+        return (transcript.host if transcript else None) or self.host
+
+    def _is_gone(self, transcript: Transcript, now: float) -> bool:
+        if transcript.host in (None, self.host):
+            return not os.path.exists(transcript.path)
+        # Another computer's disk cannot be checked: go by how long it has been silent.
+        return now - transcript.last_seen > consts.REMOTE_SESSION_TTL_SECONDS
 
     def list_sessions(self) -> list[AgentSession]:
         with self._lock:
@@ -251,12 +271,14 @@ class Store:
     # --- cleanup ---
 
     def purge_missing(self) -> list[str]:
-        """Drop sessions whose transcript file was deleted (they can no longer be resumed)."""
+        """Drop sessions that can no longer be resumed: on this computer, those whose
+        transcript file was deleted; on other computers, those silent for too long."""
         purged = []
+        now = time.time()
         with self._lock:
-            gone = [sid for sid, path in self.transcripts.items() if not os.path.exists(path)]
+            gone = [sid for sid, t in self.transcripts.items() if self._is_gone(t, now)]
             for sid in gone:
-                del self.transcripts[sid]
+                transcript = self.transcripts.pop(sid)
                 session = self.sessions.pop(sid, None)
                 if session is not None:
                     del self.names[session.name]
@@ -268,6 +290,7 @@ class Store:
                     "session purged",
                     session_id=sid,
                     name=session.name if session else None,
+                    host=transcript.host,
                     dropped_message_ids=dropped,
                 )
                 with self._db.begin() as db:

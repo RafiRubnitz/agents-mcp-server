@@ -2,7 +2,10 @@
   "mcpServers": {
     "inbox": {
       "type": "http",
-      "url": "http://127.0.0.1:8765/mcp"
+      "url": "${INBOX_URL:-http://127.0.0.1:8765}/mcp",
+      "headers": {
+        "Authorization": "Bearer ${INBOX_TOKEN:-}"
+      }
     }
   }
 }

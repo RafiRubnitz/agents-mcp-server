@@ -103,7 +103,7 @@ def test_state_survives_restart(tmp_path):
     s2 = Store(path)
     assert s2.names == {"alice": "sid-a", "bob": "sid-b"}
     assert [m.id for m in s2.open_messages("sid-b")] == [kept.id]
-    assert s2.transcripts == {"sid-b": "/some/path.jsonl"}
+    assert {sid: t.path for sid, t in s2.transcripts.items()} == {"sid-b": "/some/path.jsonl"}
     assert s2.send("sid-a", "bob", "normal", "next").id == gone.id + 1
     s2.close()
 

@@ -177,6 +177,26 @@
   .blank { max-width: 46ch; }
   .blank h2 { margin: 0 0 6px; font-size: 18px; font-weight: 600; }
   .blank p { margin: 0; color: var(--quiet); }
+  .blank form { display: flex; gap: 8px; margin-top: 16px; }
+  .blank input {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--pane);
+    color: var(--ink);
+    font: inherit;
+  }
+  .blank form button {
+    padding: 6px 14px;
+    border: 0;
+    border-radius: 4px;
+    background: var(--brand);
+    color: var(--brand-ink);
+    font-weight: 600;
+    cursor: pointer;
+  }
 
   @media (max-width: 900px) {
     body { display: block; }
@@ -212,13 +232,31 @@ const listEl = document.getElementById("list");
 const sessionsEl = document.getElementById("sessions");
 const statusEl = document.getElementById("status");
 const SESSION_KEY = "inbox.session";
+const TOKEN_KEY = "inbox.token";
 const SEVERITY = { blocking: "Blocking", important: "Important", normal: "Normal" };
 const pickedMessage = {};  // session_id -> message id
 let last = "";
 let state = { sessions: [] };
 let down = false;
+let locked = false;  // the server asked for a token we do not have, or refused ours
 let pickedSession = null;
-try { pickedSession = localStorage.getItem(SESSION_KEY); } catch (err) {}
+let token = "";
+try {
+  pickedSession = localStorage.getItem(SESSION_KEY);
+  token = localStorage.getItem(TOKEN_KEY) || "";
+} catch (err) {}
+
+function saveToken(value) {
+  token = value;
+  try { localStorage.setItem(TOKEN_KEY, value); } catch (err) {}
+}
+
+// A link can carry the token once: http://host:8765/#token=...
+const fromLink = new URLSearchParams(location.hash.slice(1)).get("token");
+if (fromLink) {
+  saveToken(fromLink);
+  history.replaceState(null, "", location.pathname);
+}
 
 function el(tag, cls, text) {
   const node = document.createElement(tag);
@@ -260,7 +298,8 @@ function renderSessions(session) {
     const button = el("button");
     button.type = "button";
     if (session && s.session_id === session.session_id) button.setAttribute("aria-current", "true");
-    button.append(el("span", "name", s.name));
+    const several = new Set(state.sessions.map(x => x.host)).size > 1;
+    button.append(el("span", "name", several ? s.name + " (" + s.host + ")" : s.name));
     if (open.length) {
       const blocking = open.some(m => m.severity === "blocking");
       const count = el("span", "count" + (blocking ? " blocking" : ""), String(open.length));
@@ -333,6 +372,26 @@ function renderList(session, picked) {
 function renderReading(session, msg) {
   const scroll = readingEl.scrollTop;
   readingEl.replaceChildren();
+  if (locked) {
+    const box = blank("This inbox needs its token", "Enter the token the server was started with (INBOX_TOKEN). It is kept in this browser.");
+    const form = el("form");
+    const input = el("input");
+    input.type = "password";
+    input.setAttribute("aria-label", "Inbox token");
+    input.autocomplete = "off";
+    const save = el("button", "", "Open inbox");
+    save.type = "submit";
+    form.append(input, save);
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      if (!input.value) return;
+      saveToken(input.value);
+      refresh();
+    });
+    box.append(form);
+    readingEl.append(box);
+    return;
+  }
   if (down) {
     readingEl.append(blank("Inbox server is not answering", "Start it with: uv run inbox-mcp"));
     return;
@@ -375,12 +434,27 @@ function render() {
 
 async function refresh() {
   try {
-    const text = await (await fetch("/api/state", { cache: "no-store" })).text();
+    const headers = token ? { Authorization: "Bearer " + token } : {};
+    const answer = await fetch("/api/state", { cache: "no-store", headers });
+    if (answer.status === 401) {
+      statusEl.className = "status down";
+      statusEl.textContent = token ? "Token refused" : "Token needed";
+      if (!locked) {
+        locked = true;
+        down = false;
+        last = "";
+        state = { sessions: [] };
+        render();
+      }
+      return;
+    }
+    const text = await answer.text();
     statusEl.className = "status";
     statusEl.textContent = "Updated " + new Date().toLocaleTimeString();
-    if (text !== last || down) {
+    if (text !== last || down || locked) {
       last = text;
       down = false;
+      locked = false;
       state = JSON.parse(text);
       render();
     }

@@ -1,20 +1,23 @@
 """Inbox MCP server: MCP tools, the HTTP routes the Claude Code hooks call, and the UI."""
 
 import functools
+import hmac
 import os
+import socket
 import sys
 import threading
 import time
 
 import uvicorn
 from mcp.server.mcpserver import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 
 from . import consts, prompts
 from .db import get_db_path
-from .errors import InboxError
+from .errors import InboxError, NetworkWithoutTokenError
 from .logs import add_console, get_logger, get_logs_dir
 from .models import Message
 from .store import Store
@@ -22,8 +25,61 @@ from .store import Store
 log = get_logger(consts.LOG_SERVER)
 
 
+def get_host() -> str:
+    return os.environ.get(consts.ENV_HOST, consts.HOST)
+
+
 def get_port() -> int:
     return int(os.environ.get(consts.ENV_PORT, consts.PORT))
+
+
+def get_token() -> str | None:
+    return os.environ.get(consts.ENV_TOKEN) or None
+
+
+def is_loopback(host: str) -> bool:
+    return host in consts.LOOPBACK_HOSTS
+
+
+def check_exposure(host: str, token: str | None) -> None:
+    """The server opens to the network only when a token guards it."""
+    if not is_loopback(host) and not token:
+        raise NetworkWithoutTokenError(host)
+
+
+def network_urls(port: int) -> list[str]:
+    """The addresses other computers can use to reach this server."""
+    try:
+        addresses = socket.gethostbyname_ex(socket.gethostname())[2]
+    except OSError:
+        return []
+    return [f"http://{a}:{port}" for a in addresses if not is_loopback(a)]
+
+
+class RequireToken:
+    """ASGI middleware: every route that carries inbox data needs the access token."""
+
+    def __init__(self, app, token: str) -> None:
+        self.app = app
+        self.expected = (consts.TOKEN_SCHEME + token).encode()
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http" or scope["path"] in consts.OPEN_ROUTES:
+            await self.app(scope, receive, send)
+            return
+        given = dict(scope["headers"]).get(consts.HEADER_AUTHORIZATION.lower().encode(), b"")
+        if hmac.compare_digest(given, self.expected):
+            await self.app(scope, receive, send)
+            return
+        client = scope.get("client")
+        log.warning(
+            "request rejected",
+            path=scope["path"],
+            client=client[0] if client else None,
+            token_sent=bool(given),
+        )
+        response = JSONResponse(consts.UNAUTHORIZED_BODY, status_code=consts.STATUS_UNAUTHORIZED)
+        await response(scope, receive, send)
 
 
 def loggable(arguments: dict) -> dict:
@@ -66,17 +122,17 @@ def format_message(msg: Message, full: bool = True) -> str:
     )
 
 
-def note_transcript(store: Store, data: dict) -> str:
+def note_transcript(store: Store, data: dict, host: str | None) -> str:
     """Record the transcript path every hook input carries; returns the session_id."""
     session_id = data.get("session_id", "")
     if session_id and data.get("transcript_path"):
-        store.set_transcript(session_id, data["transcript_path"])
+        store.set_transcript(session_id, data["transcript_path"], host)
     return session_id
 
 
 
 
-def create_app(store: Store) -> Starlette:
+def create_app(store: Store, host: str = consts.HOST, token: str | None = None) -> Starlette:
     mcp = MCPServer(consts.SERVER_NAME, instructions=prompts.INSTRUCTIONS)
 
     @mcp.tool(description=prompts.TOOL_REGISTER)
@@ -91,8 +147,15 @@ def create_app(store: Store) -> Starlette:
         sessions = store.list_sessions()
         if not sessions:
             return prompts.NO_SESSIONS
+        hosts = {s.session_id: store.host_of(s.session_id) for s in sessions}
+        # The computer is only worth a mention when sessions run on more than one.
+        line = (
+            prompts.SESSION_LINE_WITH_HOST
+            if len(set(hosts.values())) > 1
+            else prompts.SESSION_LINE
+        )
         return "\n".join(
-            prompts.SESSION_LINE.format(name=s.name, description=s.description)
+            line.format(name=s.name, description=s.description, host=hosts[s.session_id])
             for s in sessions
         )
 
@@ -176,6 +239,7 @@ def create_app(store: Store) -> Starlette:
                     "session_id": session.session_id,
                     "name": session.name,
                     "description": session.description,
+                    "host": store.host_of(session.session_id),
                     "messages": messages,
                 }
             )
@@ -185,7 +249,7 @@ def create_app(store: Store) -> Starlette:
     async def hook_messages(request: Request) -> Response:
         """The session's open messages. What to do about them is the hook manager's call."""
         data = await request.json()
-        session_id = note_transcript(store, data)
+        session_id = note_transcript(store, data, request.headers.get(consts.HEADER_CLIENT_HOST))
         session = store.sessions.get(session_id)
         messages = [
             {
@@ -221,8 +285,20 @@ def create_app(store: Store) -> Starlette:
         marked = store.mark_announced(data.get("session_id", ""), data.get("message_ids", []))
         return JSONResponse({"marked": marked})
 
+    # On the network the Host header is the server's LAN address, which the MCP library's
+    # local-only check would refuse. The token guards the server there instead.
+    security = (
+        None
+        if is_loopback(host)
+        else TransportSecuritySettings(enable_dns_rebinding_protection=False)
+    )
     # Stateless so that clients keep working across a server restart.
-    return mcp.streamable_http_app(stateless_http=True, json_response=True, host=consts.HOST)
+    app = mcp.streamable_http_app(
+        stateless_http=True, json_response=True, host=host, transport_security=security
+    )
+    if token:
+        app.add_middleware(RequireToken, token=token)
+    return app
 
 
 def purge_loop(store: Store) -> None:
@@ -234,17 +310,26 @@ def purge_loop(store: Store) -> None:
 
 def main() -> None:
     add_console(consts.LOG_SERVER, sys.stderr)
+    host, port, token = get_host(), get_port(), get_token()
+    try:
+        check_exposure(host, token)
+    except NetworkWithoutTokenError as error:
+        log.error("startup refused", host=host, error=type(error).__name__)
+        sys.exit(str(error))
     store = Store(get_db_path())
     log.info(
         "server starting",
-        host=consts.HOST,
-        port=get_port(),
+        host=host,
+        port=port,
+        token_required=token is not None,
         db=str(get_db_path()),
         logs=str(get_logs_dir()),
         pid=os.getpid(),
     )
+    if not is_loopback(host):
+        log.info("open to the network", urls=network_urls(port), computer=store.host)
     threading.Thread(target=purge_loop, args=(store,), daemon=True).start()
-    uvicorn.run(create_app(store), host=consts.HOST, port=get_port(), log_level="warning")
+    uvicorn.run(create_app(store, host, token), host=host, port=port, log_level="warning")
 
 
 if __name__ == "__main__":

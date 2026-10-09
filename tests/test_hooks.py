@@ -28,7 +28,7 @@ def test_messages_route_reports_open_messages_and_records_transcript(client, sto
         "/hooks/messages", json={"session_id": "sid-new", "transcript_path": "/t/new.jsonl"}
     ).json()
     assert new == {"session_id": "sid-new", "registered": False, "name": None, "messages": []}
-    assert store.transcripts["sid-new"] == "/t/new.jsonl"
+    assert store.transcripts["sid-new"].path == "/t/new.jsonl"
 
     normal = store.send("sid-a", "bob", "normal", "fyi")
     blocking = store.send("sid-a", "bob", "blocking", "fix the build")
