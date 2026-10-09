@@ -73,6 +73,12 @@ logs/           <component>_<date>.log, not committed
   written in `.mcp.json`. Run `claude plugin validate .` after touching plugin files.
 - The plugin runs the hook manager with `uv run --no-project --with loguru`, not from a
   venv, so `hook.py` may only need loguru beyond the standard library.
+- The token is checked in one place, the `RequireToken` middleware in `server.py`, for
+  every route not listed in `consts.OPEN_ROUTES`. A new route is protected by default.
+- A session is local or remote by the computer name its hook manager sends
+  (`X-Inbox-Host`). `Store.purge_missing` checks the transcript file only for local
+  sessions; remote ones are dropped after `REMOTE_SESSION_TTL_SECONDS` of silence.
+- `.mcp.json` uses `${INBOX_URL:-...}` and `${INBOX_TOKEN:-}`, which Claude Code fills in.
 - A running server does not reload code. Restart it after changing anything it imports.
 - The real database is `~/.claude/inbox/inbox.db` and other sessions may be using it. Use
   `INBOX_DB` and `INBOX_PORT` for manual experiments.

@@ -27,7 +27,15 @@ def test_plugin_hooks_cover_the_same_events_as_the_installer():
 
 def test_plugin_points_at_the_server_address():
     server = read_json(".mcp.json")["mcpServers"][consts.SERVER_NAME]
-    assert server == {"type": "http", "url": consts.BASE_URL + "/mcp"}
+    # Claude Code fills ${VAR:-default}: another computer's server and the token come from
+    # the same environment variables the hook manager reads.
+    assert server == {
+        "type": "http",
+        "url": "${%s:-%s}%s" % (consts.ENV_URL, consts.BASE_URL, consts.MCP_PATH),
+        "headers": {
+            consts.HEADER_AUTHORIZATION: "%s${%s:-}" % (consts.TOKEN_SCHEME, consts.ENV_TOKEN)
+        },
+    }
 
 
 def test_marketplace_lists_the_plugin():

@@ -64,7 +64,11 @@ Rules this project follows. Add a rule here when a review settles one.
 - The hook manager (`hook.py`) imports only the standard library, loguru, and our
   `consts.py`, `prompts.py` and `logs.py`, so it starts fast. Those three modules must not
   import anything heavier.
-- A hook never blocks Claude because the server is unreachable. It exits 0 and says nothing.
+- A hook never blocks Claude because the server is unreachable or refuses its token. It
+  exits 0 and says nothing.
+- The server never listens beyond loopback without a token; it refuses to start instead.
+  Every route that carries inbox data is behind the token. A route is left open only if it
+  carries none, by adding it to `consts.OPEN_ROUTES`.
 - Event policy lives in the hook manager. What an event does about the inbox (block, show,
   stay silent) and the Claude Code hook JSON it answers with are decided in `hook.py`, in a
   pure function per event so it can be tested without a server. The server exposes inbox

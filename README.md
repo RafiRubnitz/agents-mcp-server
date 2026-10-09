@@ -35,6 +35,62 @@ uvx --from git+https://github.com/RafiRubnitz/agents-mcp-server inbox-mcp
 Then restart your Claude Code sessions. Use the plugin or the manual install below, not
 both: with both, every hook runs twice.
 
+## Use it across computers
+
+Sessions on several computers in the same network can share one inbox. One computer runs
+the server and opens it to the network; the others point at it. Pick a secret token: every
+computer must have the same one.
+
+On the computer that runs the server:
+
+```
+setx INBOX_TOKEN <secret>
+set INBOX_HOST=0.0.0.0
+set INBOX_TOKEN=<secret>
+uv run inbox-mcp
+```
+
+At startup the log line "open to the network" lists the addresses the other computers can
+use, for example `http://192.168.1.20:8765`. A computer with virtual network adapters
+(VMware, Hyper-V, WSL) lists several; the right one is the IPv4 address `ipconfig` shows
+for your Wi-Fi or Ethernet adapter. The server refuses to start on the network
+without a token. Allow the port through Windows Firewall once (as administrator):
+
+```
+netsh advfirewall firewall add rule name="inbox-mcp" dir=in action=allow protocol=TCP localport=8765
+```
+
+On every other computer, once, then install the plugin as above and restart Claude Code:
+
+```
+setx INBOX_URL http://192.168.1.20:8765
+setx INBOX_TOKEN <secret>
+```
+
+`setx` stores a variable for programs started afterwards, so open a new terminal. The
+plugin's MCP tools and its hooks both read `INBOX_URL` and `INBOX_TOKEN`. With a clone
+install, register the tools with the address and the token instead:
+
+```
+claude mcp add --transport http --scope user inbox http://192.168.1.20:8765/mcp --header "Authorization: Bearer <secret>"
+```
+
+The UI is at the same address. Open `http://192.168.1.20:8765/#token=<secret>` once, or
+type the token when the page asks; the browser remembers it.
+
+What to know:
+
+- Once a token is set, every caller needs it, the sessions on the server's own computer
+  included. That is what the first `setx` above is for.
+- Traffic is plain HTTP. Someone who can listen on the network can read the token and the
+  messages. Use it on a network you trust, not on public Wi-Fi.
+- When the server's computer is off or its address changes, the inbox is down for the
+  others. Hooks then stay silent and Claude is not held.
+- Session names are unique across all computers. `list_sessions` and the UI show which
+  computer a session is on once there is more than one.
+- The server cannot see transcript files on other computers, so it drops a session from
+  another computer after 30 days without a hook call from it.
+
 ## Install from a clone
 
 ```
@@ -148,5 +204,6 @@ The database schema is managed by alembic; the server applies migrations at star
 Conventions are in `docs/conventions.md`, and `CLAUDE.md` orients a Claude session working
 on this repo.
 
-Environment: `INBOX_PORT` and `INBOX_DB` for the server, `INBOX_URL` for the hook manager,
-`INBOX_LOGS` to put the logs folder somewhere else.
+Environment: `INBOX_HOST`, `INBOX_PORT` and `INBOX_DB` for the server, `INBOX_URL` for the
+hook manager and the plugin's MCP address, `INBOX_TOKEN` for all three, `INBOX_LOGS` to put
+the logs folder somewhere else.

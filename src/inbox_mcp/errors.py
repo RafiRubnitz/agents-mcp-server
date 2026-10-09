@@ -64,3 +64,8 @@ class AlreadyDeletedError(InboxError):
 class ThreadNotFoundError(InboxError):
     def __init__(self, thread_id: int) -> None:
         super().__init__(prompts.ERROR_THREAD_NOT_FOUND.format(id=thread_id))
+
+
+class NetworkWithoutTokenError(InboxError):
+    def __init__(self, host: str) -> None:
+        super().__init__(prompts.ERROR_NETWORK_WITHOUT_TOKEN.format(host=host))
